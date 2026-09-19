@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="vi"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+
+<head>
+    <meta charset="UTF-8">
+    <title>GraphQL - Home</title>
+
+    <th:block layout:fragment="css">
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            .home-container {
+                max-width: 1200px;
+                margin: 30px auto;
+                padding: 0 20px;
+            }
+
+            .toolbar {
+                background: white;
+                padding: 20px;
+                border-radius: 10px;
+                margin-bottom: 25px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            }
+
+            .toolbar label {
+                font-weight: bold;
+                margin-right: 10px;
+            }
+
+            .toolbar select {
+                padding: 10px 15px;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                min-width: 250px;
+            }
+
+            .product-grid {
+                display: grid;
+                grid-template-columns: repeat(
+                    auto-fill,
+                    minmax(250px, 1fr)
+                );
+                gap: 20px;
+            }
+
+            .product-card {
+                background: white;
+                border-radius: 10px;
+                padding: 20px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+                overflow: hidden;
+
+                /* Không di chuyển card khi hover */
+                transition: box-shadow 0.2s ease;
+            }
+
+            .product-card:hover {
+                box-shadow: 0 5px 15px rgba(0, 0, 0, 0.12);
+            }
+
+            .product-image-wrapper {
+                width: 100%;
+                height: 220px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                margin-bottom: 15px;
+                overflow: hidden;
+            }
+
+            .product-image {
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+                display: block;
+            }
+
+            .no-image {
+                color: #777;
+                font-size: 14px;
+            }
+
+            .product-card h3 {
+                margin-top: 0;
+                margin-bottom: 10px;
+            }
+
+            .price {
+                color: #e74c3c;
+                font-size: 20px;
+                font-weight: bold;
+                margin: 10px 0;
+            }
+
+            .category {
+                color: #666;
+                font-size: 14px;
+                margin-bottom: 8px;
+            }
+
+            .quantity {
+                color: #555;
+                font-size: 14px;
+                margin-bottom: 10px;
+            }
+
+            .description {
+                color: #555;
+                line-height: 1.5;
+                min-height: 45px;
+                overflow-wrap: anywhere;
+            }
+
+            .product-actions {
+                margin-top: 15px;
+            }
+
+            .detail-btn {
+                display: inline-block;
+                padding: 10px 15px;
+                background: #3498db;
+                color: white;
+                text-decoration: none;
+                border-radius: 6px;
+                border: none;
+                cursor: pointer;
+                transition: background-color 0.2s ease;
+            }
+
+            .detail-btn:hover {
+                background: #2980b9;
+                color: white;
+            }
+
+            .empty,
+            .loading {
+                text-align: center;
+                padding: 40px;
+                color: #777;
+                background: white;
+                border-radius: 10px;
+                grid-column: 1 / -1;
+            }
+
+            @media (max-width: 768px) {
+                .product-grid {
+                    grid-template-columns: 1fr;
+                }
+
+                .toolbar select {
+                    width: 100%;
+                    margin-top: 10px;
+                }
+            }
+        </style>
+    </th:block>
+</head>
+
+<body>
+
+<div layout:fragment="content">
+
+    <div class="home-container">
+
+        <!-- FILTER CATEGORY -->
+        <div class="toolbar">
+            <label for="categoryFilter">
+                Lọc sản phẩm theo danh mục:
+            </label>
+
+            <select id="categoryFilter">
+                <option value="">
+                    -- Tất cả sản phẩm --
+                </option>
+            </select>
+        </div>
+
+        <!-- PRODUCT LIST -->
+        <div id="productList" class="product-grid">
+            <div class="loading">
+                Đang tải sản phẩm...
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<th:block layout:fragment="script">
+    <script>
+
+        /* ==========================================
+           CALL GRAPHQL
+        ========================================== */
+
+        async function callGraphQL(query) {
+
+            const response = await fetch('/graphql', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    query: query
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(
+                    'GraphQL HTTP error: ' + response.status
+                );
+            }
+
+            return await response.json();
+        }
+
+
+        /* ==========================================
+           ESCAPE GRAPHQL
+        ========================================== */
+
+        function escapeGraphQL(value) {
+            return String(value)
+                .replace(/\\/g, '\\\\')
+                .replace(/"/g, '\\"')
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r');
+        }
+
+
+        /* ==========================================
+           LOAD CATEGORY
+        ========================================== */
+
+        async function loadCategories() {
+
+            const query = `
+                query {
+                    categories {
+                        id
+                        name
+                    }
+                }
+            `;
+
+            try {
+
+                const result =
+                    await callGraphQL(query);
+
+                const select =
+                    document.getElementById(
+                        'categoryFilter'
+                    );
+
+                if (
+                    result.data &&
+                    result.data.categories
+                ) {
+
+                    result.data.categories
+                        .forEach(category => {
+
+                            const option =
+                                document.createElement(
+                                    'option'
+                                );
+
+                            option.value =
+                                category.id;
+
+                            option.textContent =
+                                category.name;
+
+                            select.appendChild(option);
+                        });
+                }
+
+            } catch (error) {
+
+                console.error(
+                    'Lỗi khi tải danh mục:',
+                    error
+                );
+            }
+        }
+
+
+        /* ==========================================
+           LOAD PRODUCT - PRICE ASC
+        ========================================== */
+
+        async function loadProductsOrderByPrice() {
+
+            const query = `
+                query {
+                    productsOrderByPriceAsc {
+                        id
+                        name
+                        price
+                        description
+                        quantity
+                        image
+                        category {
+                            id
+                            name
+                        }
+                    }
+                }
+            `;
+
+            try {
+
+                const result =
+                    await callGraphQL(query);
+
+                if (
+                    result.data &&
+                    result.data.productsOrderByPriceAsc
+                ) {
+
+                    renderProducts(
+                        result.data.productsOrderByPriceAsc
+                    );
+
+                } else {
+
+                    renderProducts([]);
+                }
+
+            } catch (error) {
+
+                console.error(
+                    'Lỗi khi tải sản phẩm:',
+                    error
+                );
+
+                document.getElementById(
+                    'productList'
+                ).innerHTML = `
+                    <div class="empty">
+                        Không thể tải danh sách sản phẩm.
+                    </div>
+                `;
+            }
+        }
+
+
+        /* ==========================================
+           LOAD PRODUCT BY CATEGORY
+        ========================================== */
+
+        async function loadProductsByCategory() {
+
+            const categoryId =
+                document.getElementById(
+                    'categoryFilter'
+                ).value;
+
+            if (!categoryId) {
+
+                await loadProductsOrderByPrice();
+                return;
+            }
+
+            const query = `
+                query {
+                    productsByCategory(
+                        categoryId: ${categoryId}
+                    ) {
+                        id
+                        name
+                        price
+                        description
+                        quantity
+                        image
+                        category {
+                            id
+                            name
+                        }
+                    }
+                }
+            `;
+
+            try {
+
+                const result =
+                    await callGraphQL(query);
+
+                if (
+                    result.data &&
+                    result.data.productsByCategory
+                ) {
+
+                    renderProducts(
+                        result.data.productsByCategory
+                    );
+
+                } else {
+
+                    renderProducts([]);
+                }
+
+            } catch (error) {
+
+                console.error(
+                    'Lỗi khi tải sản phẩm theo danh mục:',
+                    error
+                );
+
+                document.getElementById(
+                    'productList'
+                ).innerHTML = `
+                    <div class="empty">
+                        Không thể tải sản phẩm.
+                    </div>
+                `;
+            }
+        }
+
+
+        /* ==========================================
+           CREATE PRODUCT CARD
+        ========================================== */
+
+        function createProductCard(product) {
+
+            const categoryName =
+                product.category
+                    ? product.category.name
+                    : 'Chưa có danh mục';
+
+            const imageUrl =
+                product.image || '';
+
+            const description =
+                product.description
+                    ? escapeHtml(product.description)
+                    : 'Không có mô tả';
+
+            const safeName =
+                escapeHtml(product.name);
+
+            const imageHtml = imageUrl
+                ? `
+                    <img
+                        class="product-image"
+                        src="${escapeHtml(imageUrl)}"
+                        alt="${safeName}"
+                        loading="lazy"
+                        onerror="this.onerror=null; this.parentElement.innerHTML='<div class=&quot;no-image&quot;>Không có hình ảnh</div>';"
+                    >
+                  `
+                : `
+                    <div class="no-image">
+                        Không có hình ảnh
+                    </div>
+                  `;
+
+            return `
+                <div class="product-card">
+
+                    <div class="product-image-wrapper">
+                        ${imageHtml}
+                    </div>
+
+                    <h3>
+                        ${safeName}
+                    </h3>
+
+                    <div class="price">
+                        ${formatPrice(product.price)}
+                    </div>
+
+                    <div class="category">
+                        <strong>Danh mục:</strong>
+                        ${escapeHtml(categoryName)}
+                    </div>
+
+                    <div class="quantity">
+                        <strong>Số lượng:</strong>
+                        ${product.quantity ?? 0}
+                    </div>
+
+                    <div class="description">
+                        ${description}
+                    </div>
+
+                    <div class="product-actions">
+                        <button
+                            type="button"
+                            class="detail-btn"
+                            onclick="viewProductDetail(${Number(product.id)})">
+                            <i class="bi bi-eye"></i>
+                            Xem chi tiết
+                        </button>
+                    </div>
+
+                </div>
+            `;
+        }
+
+
+        /* ==========================================
+           RENDER PRODUCT
+        ========================================== */
+
+        function renderProducts(products) {
+
+            const productList =
+                document.getElementById(
+                    'productList'
+                );
+
+            if (
+                !products ||
+                products.length === 0
+            ) {
+
+                productList.innerHTML = `
+                    <div class="empty">
+                        Không có sản phẩm nào.
+                    </div>
+                `;
+
+                return;
+            }
+
+            /*
+             * Tạo HTML một lần rồi mới gán vào DOM.
+             * Không append từng card một để giảm layout/reflow.
+             */
+
+            const html =
+                products
+                    .map(createProductCard)
+                    .join('');
+
+            productList.innerHTML = html;
+        }
+
+
+        /* ==========================================
+           XEM CHI TIẾT PRODUCT
+        ========================================== */
+
+        function viewProductDetail(id) {
+
+            window.location.href =
+                `/product-detail?id=${encodeURIComponent(id)}`;
+        }
+
+
+        /* ==========================================
+           FORMAT PRICE
+        ========================================== */
+
+        function formatPrice(price) {
+
+            if (price == null) {
+                return '0 ₫';
+            }
+
+            return new Intl.NumberFormat(
+                'vi-VN'
+            ).format(price) + ' ₫';
+        }
+
+
+        /* ==========================================
+           ESCAPE HTML
+        ========================================== */
+
+        function escapeHtml(value) {
+
+            if (value == null) {
+                return '';
+            }
+
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+
+        /* ==========================================
+           INIT
+        ========================================== */
+
+        document.addEventListener(
+            'DOMContentLoaded',
+            async function () {
+
+                const categoryFilter =
+                    document.getElementById(
+                        'categoryFilter'
+                    );
+
+                /*
+                 * Hai request vẫn chạy song song,
+                 * nhưng không render Product nhiều lần.
+                 */
+                await Promise.all([
+                    loadCategories(),
+                    loadProductsOrderByPrice()
+                ]);
+
+                categoryFilter.addEventListener(
+                    'change',
+                    loadProductsByCategory
+                );
+            }
+        );
+
+    </script>
+</th:block>
+
+</body>
+</html>

@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="vi"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+
+<head>
+    <title>Chi tiết Product</title>
+
+    <th:block layout:fragment="css">
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            .container {
+                width: 90%;
+                max-width: 1300px;
+                margin: 30px auto;
+            }
+
+            .box {
+                background: #fff;
+                padding: 25px;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            }
+
+            .page-title {
+                margin: 0 0 20px;
+                font-size: 26px;
+                font-weight: 600;
+            }
+
+            .loading,
+            .error {
+                padding: 30px;
+                text-align: center;
+            }
+
+            .error {
+                color: #d32f2f;
+                display: none;
+            }
+
+            .detail-content {
+                display: grid;
+                grid-template-columns: 420px 1fr;
+                gap: 35px;
+                align-items: start;
+            }
+
+            .image-box {
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                min-height: 420px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+                background: #fafafa;
+            }
+
+            .product-image {
+                max-width: 100%;
+                max-height: 420px;
+                object-fit: contain;
+            }
+
+            .no-image {
+                color: #888;
+                font-size: 16px;
+            }
+
+            .product-info {
+                width: 100%;
+            }
+
+            .info-row {
+                display: grid;
+                grid-template-columns: 180px 1fr;
+                gap: 15px;
+                padding: 14px 0;
+                border-bottom: 1px solid #eee;
+            }
+
+            .info-label {
+                font-weight: 600;
+                color: #555;
+            }
+
+            .info-value {
+                color: #222;
+                word-break: break-word;
+            }
+
+            .price {
+                font-size: 22px;
+                font-weight: 600;
+            }
+
+            .description {
+                white-space: pre-wrap;
+                line-height: 1.6;
+            }
+
+            .back-button {
+                margin-top: 25px;
+                padding: 10px 18px;
+                border: none;
+                border-radius: 5px;
+                background: #555;
+                color: #fff;
+                cursor: pointer;
+            }
+
+            .back-button:hover {
+                background: #333;
+            }
+
+            @media (max-width: 800px) {
+                .detail-content {
+                    grid-template-columns: 1fr;
+                }
+
+                .image-box {
+                    min-height: 300px;
+                }
+
+                .info-row {
+                    grid-template-columns: 130px 1fr;
+                }
+            }
+        </style>
+    </th:block>
+</head>
+
+<body>
+
+<div layout:fragment="content">
+    <div class="container">
+
+        <div class="box">
+            <h1 class="page-title">Chi tiết Product</h1>
+
+            <div id="loading" class="loading">
+                Đang tải thông tin Product...
+            </div>
+
+            <div id="error" class="error"></div>
+
+            <div id="productDetail" style="display: none;">
+
+                <div class="detail-content">
+
+                    <!-- IMAGE -->
+                    <div class="image-box">
+                        <div id="imageContainer"></div>
+                    </div>
+
+                    <!-- INFORMATION -->
+                    <div class="product-info">
+
+                        <div class="info-row">
+                            <div class="info-label">ID</div>
+                            <div id="productId" class="info-value"></div>
+                        </div>
+
+                        <div class="info-row">
+                            <div class="info-label">Tên Product</div>
+                            <div id="productName" class="info-value"></div>
+                        </div>
+
+                        <div class="info-row">
+                            <div class="info-label">Giá</div>
+                            <div id="productPrice" class="info-value price"></div>
+                        </div>
+
+                        <div class="info-row">
+                            <div class="info-label">Số lượng</div>
+                            <div id="productQuantity" class="info-value"></div>
+                        </div>
+
+                        <div class="info-row">
+                            <div class="info-label">Category ID</div>
+                            <div id="categoryId" class="info-value"></div>
+                        </div>
+
+                        <div class="info-row">
+                            <div class="info-label">Category</div>
+                            <div id="categoryName" class="info-value"></div>
+                        </div>
+
+                        <div class="info-row">
+                            <div class="info-label">Mô tả</div>
+                            <div id="productDescription"
+                                 class="info-value description"></div>
+                        </div>
+
+                        <button type="button"
+                                class="back-button"
+                                onclick="goBack()">
+                            Quay lại
+                        </button>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<th:block layout:fragment="script">
+    <script>
+
+        /* =========================================
+           GRAPHQL
+        ========================================= */
+
+        async function callGraphQL(query) {
+
+            const response =
+                await fetch('/graphql', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: query
+                    })
+                });
+
+            if (!response.ok) {
+                throw new Error(
+                    'GraphQL HTTP error: ' + response.status
+                );
+            }
+
+            return await response.json();
+        }
+
+
+        /* =========================================
+           ESCAPE HTML
+        ========================================= */
+
+        function escapeHtml(value) {
+
+            if (
+                value === null ||
+                value === undefined
+            ) {
+                return '';
+            }
+
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+
+        /* =========================================
+           FORMAT PRICE
+        ========================================= */
+
+        function formatPrice(price) {
+
+            if (
+                price === null ||
+                price === undefined
+            ) {
+                return '';
+            }
+
+            return Number(price)
+                .toLocaleString('vi-VN') + ' VNĐ';
+        }
+
+
+        /* =========================================
+           GET PRODUCT BY ID
+        ========================================= */
+
+        async function getProductById(id) {
+
+            const query = `
+                query {
+                    products {
+                        id
+                        name
+                        price
+                        description
+                        quantity
+                        image
+                        category {
+                            id
+                            name
+                        }
+                    }
+                }
+            `;
+
+            const result =
+                await callGraphQL(query);
+
+            if (result.errors) {
+                throw new Error(
+                    result.errors[0].message
+                );
+            }
+
+            return result.data.products.find(
+                product =>
+                    String(product.id) ===
+                    String(id)
+            );
+        }
+
+
+        /* =========================================
+           RENDER PRODUCT
+        ========================================= */
+
+        function renderProduct(product) {
+
+            document.getElementById('productId')
+                .textContent = product.id ?? '';
+
+            document.getElementById('productName')
+                .textContent = product.name ?? '';
+
+            document.getElementById('productPrice')
+                .textContent = formatPrice(product.price);
+
+            document.getElementById('productQuantity')
+                .textContent = product.quantity ?? '';
+
+            document.getElementById('categoryId')
+                .textContent =
+                    product.category
+                        ? product.category.id
+                        : '';
+
+            document.getElementById('categoryName')
+                .textContent =
+                    product.category
+                        ? product.category.name
+                        : '';
+
+            document.getElementById('productDescription')
+                .textContent =
+                    product.description || '';
+
+            const imageContainer =
+                document.getElementById(
+                    'imageContainer'
+                );
+
+            imageContainer.innerHTML = '';
+
+            if (product.image) {
+
+                const image =
+                    document.createElement('img');
+
+                image.src = product.image;
+                image.alt = product.name || 'Product image';
+                image.className = 'product-image';
+
+                image.onerror = function () {
+                    image.style.display = 'none';
+
+                    const noImage =
+                        document.createElement('div');
+
+                    noImage.className = 'no-image';
+                    noImage.textContent = 'No image';
+
+                    imageContainer.appendChild(
+                        noImage
+                    );
+                };
+
+                imageContainer.appendChild(image);
+
+            } else {
+
+                const noImage =
+                    document.createElement('div');
+
+                noImage.className = 'no-image';
+                noImage.textContent = 'No image';
+
+                imageContainer.appendChild(
+                    noImage
+                );
+            }
+        }
+
+
+        /* =========================================
+           LOAD PRODUCT DETAIL
+        ========================================= */
+
+        async function loadProductDetail() {
+
+            const loading =
+                document.getElementById('loading');
+
+            const error =
+                document.getElementById('error');
+
+            const detail =
+                document.getElementById('productDetail');
+
+            try {
+
+                const params =
+                    new URLSearchParams(
+                        window.location.search
+                    );
+
+                const id = params.get('id');
+
+                if (!id) {
+                    throw new Error(
+                        'Không tìm thấy ID Product.'
+                    );
+                }
+
+                const product =
+                    await getProductById(id);
+
+                if (!product) {
+                    throw new Error(
+                        'Không tìm thấy Product với ID: ' + id
+                    );
+                }
+
+                renderProduct(product);
+
+                loading.style.display = 'none';
+                error.style.display = 'none';
+                detail.style.display = 'block';
+
+            } catch (e) {
+
+                console.error(e);
+
+                loading.style.display = 'none';
+
+                error.textContent =
+                    e.message ||
+                    'Có lỗi xảy ra khi tải Product.';
+
+                error.style.display = 'block';
+            }
+        }
+
+
+        /* =========================================
+           GO BACK
+        ========================================= */
+
+        function goBack() {
+
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.location.href =
+                    '/product';
+            }
+        }
+
+
+        /* =========================================
+           INIT
+        ========================================= */
+
+        document.addEventListener(
+            'DOMContentLoaded',
+            loadProductDetail
+        );
+
+    </script>
+</th:block>
+
+</body>
+</html>
